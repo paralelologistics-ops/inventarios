@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PARALELO Inventory Hub</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+        :root { --bg-color: #fcfcfc; --text-color: #333; --accent-color: #d4a373; --secondary: #2c2c2c; }
+        body { font-family: 'Poppins', sans-serif; background: var(--bg-color); margin: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+        header { text-align: center; padding: 30px; width: 100%; }
+        .logo-container img { height: 80px; margin-bottom: 10px; }
+        h1 { font-family: 'Montserrat'; letter-spacing: 2px; text-transform: uppercase; margin: 0; }
+        main { width: 90%; max-width: 1000px; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        .search-container { display: flex; gap: 20px; margin-bottom: 30px; flex-wrap: wrap; }
+        .input-group { flex: 1; min-width: 200px; display: flex; flex-direction: column; }
+        input, select { padding: 12px; border: 1px solid #ddd; border-radius: 5px; margin-top: 8px; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: var(--secondary); color: white; padding: 12px; }
+        td { padding: 12px; text-align: center; border-bottom: 1px solid #eee; }
+        .has-stock { font-weight: bold; color: var(--secondary); }
+        .no-stock { color: #ccc; }
+        .loading { text-align: center; padding: 40px; }
+        .error-msg { color: #d9534f; background: #f8d7da; padding: 15px; border-radius: 5px; margin-bottom: 20px; display: none; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo-container"><img src="https://static.wixstatic.com/media/d0ce54_32d30a8159fd44d4a26c62563d7bfc38~mv2.jpg"></div>
+        <h1>PARALELO</h1>
+    </header>
+    <main>
+        <div id="errorBox" class="error-msg"></div>
+        <div id="loader" class="loading">Cargando inventario...</div>
+        <div id="app" style="display:none">
+            <div class="search-container">
+                <div class="input-group">
+                    <label>Referencia</label>
+                    <input type="text" id="refInput" list="refList" placeholder="Escribe referencia...">
+                    <datalist id="refList"></datalist>
+                </div>
+                <div class="input-group">
+                    <label>Talla</label>
+                    <select id="sizeSelect"><option value="">Selecciona talla</option></select>
+                </div>
+            </div>
+            <div id="tableResult"></div>
+        </div>
+    </main>
+
+    <script>
+        const SHEETS = {
+            'Referencias': 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSo_xmNEQffBWChyZawoj5YNVOhijLLGA-bpBGQHGiTyDeSKV_T-tdW1GQeBjsulx146kbq2V2SPXmN/pub?gid=491957809&single=true&output=csv',
+            'Amorella': 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSo_xmNEQffBWChyZawoj5YNVOhijLLGA-bpBGQHGiTyDeSKV_T-tdW1GQeBjsulx146kbq2V2SPXmN/pub?gid=1065082332&single=true&output=csv',
+            'Emprenditoria': 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSo_xmNEQffBWChyZawoj5YNVOhijLLGA-bpBGQHGiTyDeSKV_T-tdW1GQeBjsulx146kbq2V2SPXmN/pub?gid=1743770835&single=true&output=csv',
+            'ID': 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSo_xmNEQffBWChyZawoj5YNVOhijLLGA-bpBGQHGiTyDeSKV_T-tdW1GQeBjsulx146kbq2V2SPXmN/pub?gid=1231428952&single=true&output=csv',
+            'Ginebra': 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSo_xmNEQffBWChyZawoj5YNVOhijLLGA-bpBGQHGiTyDeSKV_T-tdW1GQeBjsulx146kbq2V2SPXmN/pub?gid=557549372&single=true&output=csv',
+            'Benditta': 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSo_xmNEQffBWChyZawoj5YNVOhijLLGA-bpBGQHGiTyDeSKV_T-tdW1GQeBjsulx146kbq2V2SPXmN/pub?gid=0&single=true&output=csv',
+            'Taller': 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSo_xmNEQffBWChyZawoj5YNVOhijLLGA-bpBGQHGiTyDeSKV_T-tdW1GQeBjsulx146kbq2V2SPXmN/pub?gid=753428539&single=true&output=csv',
+            'Natalia': 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSo_xmNEQffBWChyZawoj5YNVOhijLLGA-bpBGQHGiTyDeSKV_T-tdW1GQeBjsulx146kbq2V2SPXmN/pub?gid=1564348751&single=true&output=csv',
+            'Manuela': 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSo_xmNEQffBWChyZawoj5YNVOhijLLGA-bpBGQHGiTyDeSKV_T-tdW1GQeBjsulx146kbq2V2SPXmN/pub?gid=1147281710&single=true&output=csv'
+        };
+
+        let inventory = {};
+        const LOCATIONS = Object.keys(SHEETS).filter(k => k !== 'Referencias');
+
+        async function init() {
+            try {
+                const loads = Object.entries(SHEETS).map(([name, url]) => {
+                    return new Promise(res => {
+                        Papa.parse(url, {
+                            download: true, header: true,
+                            complete: results => { res({name, data: results.data}); },
+                            error: () => { console.error("Error en " + name); res({name, data: []}); }
+                        });
+                    });
+                });
+
+                const allData = await Promise.all(loads);
+                allData.forEach(item => process(item.name, item.data));
+                
+                document.getElementById('loader').style.display = 'none';
+                document.getElementById('app').style.display = 'block';
+                fillDatalist();
+            } catch (e) {
+                document.getElementById('errorBox').innerText = "Error cargando datos. Prueba refrescando.";
+                document.getElementById('errorBox').style.display = 'block';
+            }
+        }
+
+        function process(name, rows) {
+            rows.forEach(row => {
+                const ref = row['Referencia'];
+                const talla = row['Talla'];
+                if(!ref || !talla) return;
+                if(!inventory[ref]) inventory[ref] = {};
+                if(!inventory[ref][talla]) {
+                    inventory[ref][talla] = {};
+                    LOCATIONS.forEach(l => inventory[ref][talla][l] = 0);
+                }
+                if(name !== 'Referencias') {
+                    let qty = parseInt(String(row['Saldo actual']).replace(/[^0-9]/g, '')) || 0;
+                    inventory[ref][talla][name] = qty;
+                }
+            });
+        }
+
+        function fillDatalist() {
+            const list = document.getElementById('refList');
+            Object.keys(inventory).sort().forEach(r => {
+                let opt = document.createElement('option');
+                opt.value = r; list.appendChild(opt);
+            });
+        }
+
+        document.getElementById('refInput').addEventListener('change', e => {
+            const ref = e.target.value;
+            const sel = document.getElementById('sizeSelect');
+            sel.innerHTML = '<option value="ALL">Todas las tallas</option>';
+            if(inventory[ref]) {
+                Object.keys(inventory[ref]).forEach(t => {
+                    let opt = document.createElement('option');
+                    opt.value = t; opt.innerText = t; sel.appendChild(opt);
+                });
+                render(ref, 'ALL');
+            }
+        });
+
+        document.getElementById('sizeSelect').addEventListener('change', e => {
+            render(document.getElementById('refInput').value, e.target.value);
+        });
+
+        function render(ref, filter) {
+            if(!inventory[ref]) return;
+            let html = `<table><thead><tr><th>Talla</th>${LOCATIONS.map(l=>`<th>${l}</th>`).join('')}</tr></thead><tbody>`;
+            const tallas = filter === 'ALL' ? Object.keys(inventory[ref]) : [filter];
+            tallas.forEach(t => {
+                html += `<tr><td>${t}</td>`;
+                LOCATIONS.forEach(l => {
+                    let q = inventory[ref][t][l];
+                    html += `<td class="${q>0?'':'no-stock'}">${q > 0 ? q : '-'}</td>`;
+                });
+                html += `</tr>`;
+            });
+            html += '</tbody></table>';
+            document.getElementById('tableResult').innerHTML = html;
+        }
+
+        init();
+    </script>
+</body>
+</html>
